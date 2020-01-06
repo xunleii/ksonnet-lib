@@ -9,7 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/go-jsonnet/ast"
-	"github.com/google/go-jsonnet/parser"
 	"github.com/pkg/errors"
 
 	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/astext"
@@ -658,7 +657,7 @@ func (p *old_printer) handleLocalFunction(f *ast.Function) {
 // shouldUnquoteFieldID determines whether s can be an unquoted field identifier.
 // Things that can't be unquoted: keywords, expressions.
 func shouldUnquoteFieldID(s string) bool {
-	// Try to pose the string as a raw (unquoted) object field identifier.
+/*	// Try to pose the string as a raw (unquoted) object field identifier.
 	// If this succeeds, quotes are not needed.
 	toParse := fmt.Sprintf("{%s: 'value'}", s)
 	tokens, err := parser.Lex("", toParse)
@@ -679,7 +678,7 @@ func shouldUnquoteFieldID(s string) bool {
 		return true
 	}
 
-	return false
+*/	return false
 }
 
 // reID matches `id` as defined in the jsonnet spec
