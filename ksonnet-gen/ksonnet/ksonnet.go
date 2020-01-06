@@ -4,7 +4,7 @@ import (
 	"bytes"
 
 	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/kubespec"
-	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/printer"
+	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/old_printer"
 	"github.com/pkg/errors"
 )
 
@@ -59,7 +59,7 @@ func createK8s(c *Catalog) ([]byte, error) {
 
 	var buf bytes.Buffer
 
-	if err := printer.Fprint(&buf, node.Node()); err != nil {
+	if err := old_printer.Fprint(&buf, node.Node()); err != nil {
 		return nil, errors.Wrap(err, "print AST")
 	}
 
@@ -76,7 +76,7 @@ func createK(c *Catalog) ([]byte, error) {
 
 	var buf bytes.Buffer
 
-	if err := printer.Fprint(&buf, node.Node()); err != nil {
+	if err := old_printer.Fprint(&buf, node.Node()); err != nil {
 		return nil, errors.Wrap(err, "print AST")
 	}
 

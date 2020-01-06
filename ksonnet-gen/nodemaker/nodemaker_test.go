@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/go-jsonnet/ast"
 	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/astext"
-	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/printer"
+	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/old_printer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +25,7 @@ func ExampleApply() {
 		fmt.Printf("error: %#v\n", err)
 	}
 
-	if err := printer.Fprint(os.Stdout, o.Node()); err != nil {
+	if err := old_printer.Fprint(os.Stdout, o.Node()); err != nil {
 		fmt.Printf("error: %#v\n", err)
 	}
 
@@ -46,7 +46,7 @@ func ExampleArray() {
 		fmt.Printf("error: %#v\n", err)
 	}
 
-	if err := printer.Fprint(os.Stdout, o.Node()); err != nil {
+	if err := old_printer.Fprint(os.Stdout, o.Node()); err != nil {
 		fmt.Printf("error: %#v\n", err)
 	}
 
@@ -65,7 +65,7 @@ func ExampleBinary() {
 		fmt.Printf("error: %#v\n", err)
 	}
 
-	if err := printer.Fprint(os.Stdout, o.Node()); err != nil {
+	if err := old_printer.Fprint(os.Stdout, o.Node()); err != nil {
 		fmt.Printf("error: %#v\n", err)
 	}
 
@@ -85,7 +85,7 @@ func ExampleCall() {
 		fmt.Printf("error: %#v\n", err)
 	}
 
-	if err := printer.Fprint(os.Stdout, o.Node()); err != nil {
+	if err := old_printer.Fprint(os.Stdout, o.Node()); err != nil {
 		fmt.Printf("error: %#v\n", err)
 	}
 
@@ -105,7 +105,7 @@ func ExampleObject() {
 		fmt.Printf("error: %#v\n", err)
 	}
 
-	if err := printer.Fprint(os.Stdout, o.Node()); err != nil {
+	if err := old_printer.Fprint(os.Stdout, o.Node()); err != nil {
 		fmt.Printf("error: %#v\n", err)
 	}
 
@@ -148,7 +148,7 @@ func ExampleConditional() {
 		fmt.Printf("error: %#v\n", err)
 	}
 
-	if err := printer.Fprint(os.Stdout, o.Node()); err != nil {
+	if err := old_printer.Fprint(os.Stdout, o.Node()); err != nil {
 		fmt.Printf("error: %#v\n", err)
 	}
 
@@ -294,7 +294,7 @@ func TestObject(t *testing.T) {
 			node, expected := tc.object(t)
 			if node != nil && expected != nil {
 				if !assert.Equal(t, expected, node.Node()) {
-					printer.Fprint(os.Stdout, node.Node())
+					old_printer.Fprint(os.Stdout, node.Node())
 				}
 			}
 		})
@@ -1336,7 +1336,7 @@ func TestCallChain(t *testing.T) {
 			cc := NewCallChain(tc.noders...)
 
 			var buf bytes.Buffer
-			err := printer.Fprint(&buf, cc.Node())
+			err := old_printer.Fprint(&buf, cc.Node())
 			require.NoError(t, err)
 
 			assert.Equal(t, tc.expected, cc.Node())

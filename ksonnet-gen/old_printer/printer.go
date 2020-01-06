@@ -1,4 +1,4 @@
-package printer
+package old_printer
 
 import (
 	"bytes"

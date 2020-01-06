@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	nm "github.com/ksonnet/ksonnet-lib/ksonnet-gen/nodemaker"
-	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/printer"
+	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/old_printer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -380,7 +380,7 @@ func Test_renderFields(t *testing.T) {
 	err := renderFields(c, o, "", props)
 	require.NoError(t, err)
 
-	err = printer.Fprint(ioutil.Discard, o.Node())
+	err = old_printer.Fprint(ioutil.Discard, o.Node())
 	require.NoError(t, err)
 
 	require.NotNil(t, o.Get(fieldName("name", false)))

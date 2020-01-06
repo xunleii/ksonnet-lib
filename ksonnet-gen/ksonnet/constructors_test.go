@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	nm "github.com/ksonnet/ksonnet-lib/ksonnet-gen/nodemaker"
-	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/printer"
+	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/old_printer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -84,7 +84,7 @@ func Test_constructor(t *testing.T) {
 	o.Set(key, c.Body(ctorBase...))
 
 	var buf bytes.Buffer
-	err = printer.Fprint(&buf, o.Node())
+	err = old_printer.Fprint(&buf, o.Node())
 	require.NoError(t, err)
 
 	testData, err := ioutil.ReadFile("testdata/constructor.libsonnet")
