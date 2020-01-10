@@ -8,10 +8,6 @@ import (
 
 type istNodeCache map[string]*ist.APINode
 
-const (
-	whitelistedNodeTag ist.NodeTag = 0x0100
-)
-
 // WhitelistAPI keep all cached nodes (and their linked references) listed
 // in apiWhitelist. It removes all unnecessary nodes in order to lightweight
 // the Jsonnet library.
@@ -23,14 +19,15 @@ func (cache istNodeCache) WhitelistAPI(apiWhitelist []string) (istNodeCache, err
 			return nil, fmt.Errorf("failed to whitelist API '%s': unknown API Node", api)
 		}
 
-		cache[api].AddTag(whitelistedNodeTag)
+		cache[api].AddTag(ist.PublicNodeTag)
+		cache[api].AddTag(ist.ReferencedTag)
 		if err := cache.markAsWhitelisted(cache[api]); err != nil {
 			return nil, fmt.Errorf("failed to whitelist '%s': %w", api, err)
 		}
 	}
 
 	for api, node := range cache {
-		if node.HasTag(whitelistedNodeTag) {
+		if node.HasTag(ist.ReferencedTag) {
 			whitelistedCache[api] = node
 		}
 	}
@@ -47,8 +44,11 @@ func (cache istNodeCache) markAsWhitelisted(node ist.Node) error {
 		}
 
 		n.ReferenceTargetNode(cached)
-		cached.AddTag(whitelistedNodeTag)
-		return cache.markAsWhitelisted(cached)
+
+		if !cached.HasTag(ist.ReferencedTag) {
+			cached.AddTag(ist.ReferencedTag)
+			return cache.markAsWhitelisted(cached)
+		}
 	case *ist.APINode:
 		return cache.markAsWhitelisted(n.Node)
 	case *ist.Object:

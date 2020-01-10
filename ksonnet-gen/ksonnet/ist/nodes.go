@@ -31,6 +31,11 @@ type (
 	}
 )
 
+const (
+	PublicNodeTag NodeTag = 1 << iota
+	ReferencedTag
+)
+
 func (n *NodeBase) AddTag(tag NodeTag)     { n.Tags |= tag }
 func (n NodeBase) HasTag(tag NodeTag) bool { return (n.Tags & tag) == tag }
 func (n NodeBase) String() string          { return path.Join(n.Parent.String(), n.Name) }
@@ -54,6 +59,13 @@ type (
 	}
 )
 
+func (d APIDefinition) APIPath() []string {
+	if d.Version == "" {
+		return []string{d.Group, d.Kind}
+	}
+	return []string{d.Group, d.Version, d.Kind}
+}
+
 func (o APINode) ToObjectFields(ast.Identifier) []ast.ObjectField { panic("implement me") }
 
 // Object represents an API object component. It is represented in the
@@ -73,7 +85,18 @@ type Array struct {
 	ItemType Node
 }
 
-func (a Array) ToObjectFields(ast.Identifier) []ast.ObjectField { panic("implement me") }
+func (a Array) ToObjectFields(id ast.Identifier) []ast.ObjectField {
+	fields := []ast.ObjectField{
+		buildComment(a.Comment),
+		buildWithArrayFn(id),
+		buildWithMixinArrayFn(id),
+	}
+
+	if ref, isRef := a.ItemType.(*Ref); isRef {
+		fields = append(fields, buildRefType(id, ref))
+	}
+	return fields
+}
 
 type (
 	// Scalar represents all component that are not Object nor Array.
@@ -96,10 +119,10 @@ type Ref struct {
 	NodeBase
 	ReferenceTo string
 
-	targetNode Node
+	targetNode *APINode
 }
 
-func (r *Ref) ReferenceTargetNode(target *APINode) { r.targetNode = target.Node }
-func (r Ref) TargetNode() Node                     { return r.targetNode }
+func (r *Ref) ReferenceTargetNode(target *APINode) { r.targetNode = target }
+func (r Ref) TargetNode() *APINode                 { return r.targetNode }
 
 func (r Ref) ToObjectFields(ast.Identifier) []ast.ObjectField { panic("implement me") }
