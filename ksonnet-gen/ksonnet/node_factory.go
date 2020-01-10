@@ -77,6 +77,11 @@ func refNodeBuilder(name string, schema *spec.Schema, parent ist.Node) (ist.Node
 
 // objectNodeBuilder creates an ist.Object node from a schema object.
 func objectNodeBuilder(name string, schema *spec.Schema, parent ist.Node) (ist.Node, error) {
+	// object without properties must be managed as a scalar type
+	if len(schema.Properties) == 0 {
+		return scalarNodeBuilder(name, schema, parent)
+	}
+
 	node := &ist.Object{
 		NodeBase: ist.NodeBase{
 			Parent:  parent,

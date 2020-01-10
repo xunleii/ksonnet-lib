@@ -66,8 +66,6 @@ func (d APIDefinition) APIPath() []string {
 	return []string{d.Group, d.Version, d.Kind}
 }
 
-func (o APINode) ToObjectFields(ast.Identifier) []ast.ObjectField { panic("implement me") }
-
 // Object represents an API object component. It is represented in the
 // Jsonnet AST by a simple JSON object.
 type Object struct {
@@ -75,7 +73,15 @@ type Object struct {
 	Fields map[string]Node
 }
 
-func (o Object) ToObjectFields(ast.Identifier) []ast.ObjectField { panic("implement me") }
+func (o Object) ToObjectFields(id ast.Identifier) []ast.ObjectField {
+	var innerFields []ast.ObjectField
+	for _, fieldId := range sortFieldIds(o) {
+		innerFields = append(innerFields, o.Fields[fieldId].ToObjectFields(ast.Identifier(fieldId))...)
+	}
+
+	fields := []ast.ObjectField{buildMixinInstanceFn(id)}
+	return append(fields, innerFields...)
+}
 
 // Array represents an API array component. It is represented in the
 // Jsonnet AST by two functions (with... and with...Mixin) and the
@@ -89,6 +95,7 @@ func (a Array) ToObjectFields(id ast.Identifier) []ast.ObjectField {
 	fields := []ast.ObjectField{
 		buildComment(a.Comment),
 		buildWithArrayFn(id),
+		buildComment(a.Comment),
 		buildWithMixinArrayFn(id),
 	}
 
@@ -125,4 +132,25 @@ type Ref struct {
 func (r *Ref) ReferenceTargetNode(target *APINode) { r.targetNode = target }
 func (r Ref) TargetNode() *APINode                 { return r.targetNode }
 
-func (r Ref) ToObjectFields(ast.Identifier) []ast.ObjectField { panic("implement me") }
+func (r Ref) ToObjectFields(id ast.Identifier) []ast.ObjectField {
+	target := r.TargetNode()
+	if target == nil {
+		panic(fmt.Sprintf("invalid reference %s: all references must be already linked", r.ReferenceTo))
+	}
+
+	switch n := target.Node.(type) {
+	case *Object:
+		return []ast.ObjectField{
+			buildComment(n.Comment),
+			{
+				Kind:  ast.ObjectFieldID,
+				Hide:  ast.ObjectFieldHidden,
+				Id:    &id,
+				Expr2: &ast.Object{Fields: target.ToObjectFields(id)},
+			},
+			buildRefType(id, &r),
+		}
+	default:
+		return n.ToObjectFields(id)
+	}
+}

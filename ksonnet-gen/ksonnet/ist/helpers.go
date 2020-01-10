@@ -15,7 +15,6 @@ var (
 )
 
 // sortFieldIds create a sorted list of the object field name.
-// TODO: use a generic function instead (map key sort)
 func sortFieldIds(obj Object) []string {
 	ids := make([]string, len(obj.Fields))
 	i := 0
