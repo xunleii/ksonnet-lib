@@ -17,6 +17,7 @@ type (
 	Node interface {
 		fmt.Stringer
 
+		Base() NodeBase
 		AddTag(tag NodeTag)
 		HasTag(tag NodeTag) bool
 		ToObjectFields(id ast.Identifier) []ast.ObjectField
@@ -36,6 +37,7 @@ const (
 	ReferencedTag
 )
 
+func (n NodeBase) Base() NodeBase          { return n }
 func (n *NodeBase) AddTag(tag NodeTag)     { n.Tags |= tag }
 func (n NodeBase) HasTag(tag NodeTag) bool { return (n.Tags & tag) == tag }
 func (n NodeBase) String() string          { return path.Join(n.Parent.String(), n.Name) }
@@ -79,8 +81,7 @@ func (o Object) ToObjectFields(id ast.Identifier) []ast.ObjectField {
 		innerFields = append(innerFields, o.Fields[fieldId].ToObjectFields(ast.Identifier(fieldId))...)
 	}
 
-	fields := []ast.ObjectField{buildMixinInstanceFn(id)}
-	return append(fields, innerFields...)
+	return append(buildMixinFncs(id, o), innerFields...)
 }
 
 // Array represents an API array component. It is represented in the
@@ -94,9 +95,9 @@ type Array struct {
 func (a Array) ToObjectFields(id ast.Identifier) []ast.ObjectField {
 	fields := []ast.ObjectField{
 		buildComment(a.Comment),
-		buildWithArrayFn(id),
+		buildWithArrayFnc(id),
 		buildComment(a.Comment),
-		buildWithMixinArrayFn(id),
+		buildWithMixinArrayFnc(id),
 	}
 
 	if ref, isRef := a.ItemType.(*Ref); isRef {
@@ -117,7 +118,7 @@ type (
 func (s Scalar) ToObjectFields(id ast.Identifier) []ast.ObjectField {
 	return []ast.ObjectField{
 		buildComment(s.Comment),
-		buildWithScalarFn(id),
+		buildWithScalarFnc(id),
 	}
 }
 
@@ -129,8 +130,49 @@ type Ref struct {
 	targetNode *APINode
 }
 
-func (r *Ref) ReferenceTargetNode(target *APINode) { r.targetNode = target }
-func (r Ref) TargetNode() *APINode                 { return r.targetNode }
+func (r *Ref) ReferenceTargetNode(target *APINode) {
+
+	var node Node
+	switch n := target.Node.(type) {
+	case *Object:
+		node = &Object{
+			NodeBase: NodeBase{
+				Parent:  r.Parent,
+				Name:    n.Name,
+				Comment: n.Comment,
+				Tags:    n.Tags,
+			},
+			Fields: n.Fields,
+		}
+	case *Array:
+		node = &Array{
+			NodeBase: NodeBase{
+				Parent:  r.Parent,
+				Name:    n.Name,
+				Comment: n.Comment,
+				Tags:    n.Tags,
+			},
+			ItemType: n.ItemType,
+		}
+	case *Scalar:
+		node = &Scalar{
+			NodeBase: NodeBase{
+				Parent:  r.Parent,
+				Name:    n.Name,
+				Comment: n.Comment,
+				Tags:    n.Tags,
+			},
+		}
+	default:
+		panic(fmt.Sprintf("unknown target type %T", n))
+	}
+
+	r.targetNode = &APINode{
+		Definition: target.Definition,
+		Node:       node,
+	}
+}
+func (r Ref) TargetNode() *APINode { return r.targetNode }
 
 func (r Ref) ToObjectFields(id ast.Identifier) []ast.ObjectField {
 	target := r.TargetNode()

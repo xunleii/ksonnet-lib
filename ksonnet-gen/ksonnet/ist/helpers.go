@@ -10,8 +10,6 @@ import (
 
 var (
 	oneLiner = ast.NewNodeBaseLoc(ast.LocationRange{Begin: ast.Location{Line: 1}, End: ast.Location{Line: 1}})
-
-	mixinInstanceFncId = ast.Identifier("mixinInstance")
 )
 
 // sortFieldIds create a sorted list of the object field name.
@@ -65,45 +63,8 @@ func buildRefType(name ast.Identifier, ref *Ref) ast.ObjectField {
 	}
 }
 
-// buildMixinInstanceFn generates the jsonnet method "mixinInstance", common
-// with all k8s.libsonnet objects.
-// JSONNET: mixinInstance(object):: super.mixinInstance({ object+: object })
-func buildMixinInstanceFn(target ast.Identifier) ast.ObjectField {
-	// mixinInstance(target):: super.mixinInstance({ target+: target })
-	fnc := ast.Function{
-		Parameters: ast.Parameters{
-			Required: []ast.Identifier{target},
-		},
-		// super.mixinInstance({ target+: target })
-		Body: &ast.Apply{
-			Target: &ast.SuperIndex{Id: &mixinInstanceFncId},
-			Arguments: ast.Arguments{
-				Positional: []ast.Node{
-					// { target+: target }
-					&ast.Object{
-						NodeBase: oneLiner,
-						Fields: []ast.ObjectField{
-							{Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldInherit, SuperSugar: true, Id: &target, Expr2: &ast.Var{Id: target}},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	return ast.ObjectField{
-		Kind:        ast.ObjectFieldID,
-		Hide:        ast.ObjectFieldHidden,
-		MethodSugar: true,
-		Method:      &fnc,
-		Id:          &mixinInstanceFncId,
-		Params:      &fnc.Parameters,
-		Expr2:       fnc.Body,
-	}
-}
-
-// buildWithArrayGenericFn helps to generate a jsonnet method more easily.
-func buildWithGenericFn(fncId, paramId ast.Identifier, op ast.Node) ast.ObjectField {
+// buildWithArrayGenericFnc helps to generate a jsonnet method more easily.
+func buildWithGenericFnc(fncId, paramId ast.Identifier, op ast.Node) ast.ObjectField {
 	// fncId(paramId):: self + op
 	fnc := ast.Function{
 		Parameters: ast.Parameters{Required: []ast.Identifier{paramId}},
@@ -126,10 +87,11 @@ func buildWithGenericFn(fncId, paramId ast.Identifier, op ast.Node) ast.ObjectFi
 	}
 }
 
-// buildWithScalarFn generates the jsonnet method that add a scalar value to
+// buildWithScalarFnc generates the jsonnet method that add a scalar value to
 // an object field.
 // JSONNET: withName(name):: self + self.mixinInstance({ name: name }
-func buildWithScalarFn(name ast.Identifier) ast.ObjectField {
+func buildWithScalarFnc(name ast.Identifier) ast.ObjectField {
+	mixinInstanceFncId := ast.Identifier("mixinInstance")
 	fncId := ast.Identifier("with" + strings.Title(string(name)))
 
 	// self.mixinInstance({ name: name })
@@ -150,12 +112,13 @@ func buildWithScalarFn(name ast.Identifier) ast.ObjectField {
 			},
 		},
 	}
-	return buildWithGenericFn(fncId, name, op)
+	return buildWithGenericFnc(fncId, name, op)
 }
 
-// buildWithArrayGenericFn helps to generates the array method more
+// buildWithArrayGenericFnc helps to generates the array method more
 // easily (the ast condition is too heavy to be written several times).
-func buildWithArrayGenericFn(fncId, paramId ast.Identifier, objTrue, objFalse ast.ObjectField) ast.ObjectField {
+func buildWithArrayGenericFnc(fncId, paramId ast.Identifier, objTrue, objFalse ast.ObjectField) ast.ObjectField {
+	mixinInstanceFncId := ast.Identifier("mixinInstance")
 	stdId, typeFnId := ast.Identifier("std"), ast.Identifier("type")
 
 	// if std.type(paramId) == 'array' then self.mixinInstance(objTrue) else self.mixinInstance(objFalse)
@@ -180,14 +143,14 @@ func buildWithArrayGenericFn(fncId, paramId ast.Identifier, objTrue, objFalse as
 			Arguments: ast.Arguments{Positional: []ast.Node{&ast.Object{NodeBase: oneLiner, Fields: []ast.ObjectField{objFalse}}}},
 		},
 	}
-	return buildWithGenericFn(fncId, paramId, op)
+	return buildWithGenericFnc(fncId, paramId, op)
 }
 
-// buildWithArrayFn generates the jsonnet method that add an array to an
+// buildWithArrayFnc generates the jsonnet method that add an array to an
 // object field.
 // JSONNET: withName(name):: self + if std.type(name) == 'array' then
 // self.mixinInstance({ name: name }) else self.mixinInstance({ name: [name] }
-func buildWithArrayFn(name ast.Identifier) ast.ObjectField {
+func buildWithArrayFnc(name ast.Identifier) ast.ObjectField {
 	fncId := ast.Identifier("with" + strings.Title(string(name)))
 
 	// name: name
@@ -195,14 +158,14 @@ func buildWithArrayFn(name ast.Identifier) ast.ObjectField {
 	// name: [name]
 	objFalse := ast.ObjectField{Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldInherit, Id: &name, Expr2: &ast.Array{Elements: []ast.Node{&ast.Var{Id: name}}}}
 
-	return buildWithArrayGenericFn(fncId, name, objTrue, objFalse)
+	return buildWithArrayGenericFnc(fncId, name, objTrue, objFalse)
 }
 
-// buildWithMixinArrayFn generates the jsonnet method that merge an array with an
+// buildWithMixinArrayFnc generates the jsonnet method that merge an array with an
 // object field.
 // JSONNET: withNameMixin(name):: self + if std.type(name) == 'array' then
 // self.mixinInstance({ name+: name }) else self.mixinInstance({ name+: [name] }
-func buildWithMixinArrayFn(name ast.Identifier) ast.ObjectField {
+func buildWithMixinArrayFnc(name ast.Identifier) ast.ObjectField {
 	fncId := ast.Identifier("with" + strings.Title(string(name)) + "Mixin")
 
 	// name+: name
@@ -210,5 +173,56 @@ func buildWithMixinArrayFn(name ast.Identifier) ast.ObjectField {
 	// name+: [name]
 	objFalse := ast.ObjectField{Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldInherit, SuperSugar: true, Id: &name, Expr2: &ast.Array{Elements: []ast.Node{&ast.Var{Id: name}}}}
 
-	return buildWithArrayGenericFn(fncId, name, objTrue, objFalse)
+	return buildWithArrayGenericFnc(fncId, name, objTrue, objFalse)
+}
+
+// buildMixinFncs generates the jsonnet methods "mixinInstance" and
+// "mixinName", common with all k8s.libsonnet objects.
+// JSONNET: local __mixinName(name) = __mixinParentName({ name+: name })
+// JSONNET: mixinInstance(name) = __mixinName(name)
+func buildMixinFncs(name ast.Identifier, object Object) []ast.ObjectField {
+	mixinInstanceFncId := ast.Identifier("mixinInstance")
+	mixinSelfFncId := ast.Identifier("__mixin" + strings.Title(object.Name))
+	mixinParentFncId := ast.Identifier("__mixin")
+	if object.Parent != nil {
+		mixinParentFncId += ast.Identifier(strings.Title(object.Parent.Base().Name))
+	}
+
+	// local __mixinName(name) = __mixinParentName({ name+: name })
+	localMixinFnc := ast.Function{
+		Parameters: ast.Parameters{Required: []ast.Identifier{name}},
+		// __mixinParentName({ name+: name })
+		Body: &ast.Apply{
+			Target: &ast.Var{Id: mixinParentFncId},
+			// { name+: name }
+			Arguments: ast.Arguments{Positional: []ast.Node{
+				&ast.Object{
+					NodeBase: oneLiner,
+					Fields: []ast.ObjectField{
+						{Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldInherit, SuperSugar: true, Id: &name, Expr2: &ast.Var{Id: name}},
+					},
+				},
+			}},
+		},
+	}
+	// mixinInstance(name):: __mixinName(name)
+	selfMixin := ast.Function{
+		Parameters: ast.Parameters{Required: []ast.Identifier{name}},
+		// __mixinName(name)
+		Body: &ast.Apply{
+			Target:    &ast.Var{Id: mixinSelfFncId},
+			Arguments: ast.Arguments{Positional: []ast.Node{&ast.Var{Id: name}}},
+		},
+	}
+
+	return []ast.ObjectField{
+		{
+			Kind: ast.ObjectLocal, Hide: ast.ObjectFieldVisible, Id: &mixinSelfFncId,
+			MethodSugar: true, Method: &localMixinFnc, Params: &localMixinFnc.Parameters, Expr2: localMixinFnc.Body,
+		},
+		{
+			Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldHidden, Id: &mixinInstanceFncId,
+			MethodSugar: true, Method: &selfMixin, Params: &selfMixin.Parameters, Expr2: selfMixin.Body,
+		},
+	}
 }
