@@ -84,7 +84,12 @@ type (
 	}
 )
 
-func (s Scalar) ToObjectFields(ast.Identifier) []ast.ObjectField { panic("implement me") }
+func (s Scalar) ToObjectFields(id ast.Identifier) []ast.ObjectField {
+	return []ast.ObjectField{
+		buildComment(s.Comment),
+		buildWithScalarFn(id),
+	}
+}
 
 // Ref represents an API object reference.
 type Ref struct {
