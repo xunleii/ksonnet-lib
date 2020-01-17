@@ -1,7 +1,6 @@
 package ist
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 
 var (
 	oneLiner = ast.NewNodeBaseLoc(ast.LocationRange{Begin: ast.Location{Line: 1}, End: ast.Location{Line: 1}})
+	emptyId  = ast.Identifier("")
 )
 
 // sortFieldIds create a sorted list of the object field name.
@@ -37,16 +37,12 @@ func buildComment(comment string) ast.ObjectField {
 // the referenced API object.
 // JSONNET: nameType:: hidden.refGroup.refVersion.refKind
 // (or nameType:: $.refGroup.refVersion.refKind is ref is public)
-func buildRefType(name ast.Identifier, ref *Ref) ast.ObjectField {
-	if ref.targetNode == nil {
-		panic(fmt.Sprintf("invalid reference %s: all references must be already linked", ref.ReferenceTo))
-	}
-
+func buildRefType(name ast.Identifier, ref *APINode) ast.ObjectField {
 	typeId := name + "Type"
-	refPath := ref.TargetNode().Definition.APIPath()
+	refPath := ref.Definition.APIPath()
 
 	var index ast.Node = &ast.Var{Id: "hidden"}
-	if ref.TargetNode().HasTag(PublicNodeTag) {
+	if ref.HasTag(PublicNodeTag) {
 		index = &ast.Dollar{}
 	}
 
@@ -176,37 +172,54 @@ func buildWithMixinArrayFnc(name ast.Identifier) ast.ObjectField {
 	return buildWithArrayGenericFnc(fncId, name, objTrue, objFalse)
 }
 
-// buildMixinFncs generates the jsonnet methods "mixinInstance" and
-// "mixinName", common with all k8s.libsonnet objects.
+// buildLocalMixinFnc generates the jsonnet local method "__mixinName",
+// common with all k8s.libsonnet objects.
 // JSONNET: local __mixinName(name) = __mixinParentName({ name+: name })
-// JSONNET: mixinInstance(name) = __mixinName(name)
-func buildMixinFncs(name ast.Identifier, object Object) []ast.ObjectField {
-	mixinInstanceFncId := ast.Identifier("mixinInstance")
-	mixinSelfFncId := ast.Identifier("__mixin" + strings.Title(object.Name))
-	mixinParentFncId := ast.Identifier("__mixin")
-	if object.Parent != nil {
-		mixinParentFncId += ast.Identifier(strings.Title(object.Parent.Base().Name))
-	}
+// or
+// JSONNET: local __mixinName(name) = { name+: name }
+func buildLocalMixinFnc(name ast.Identifier, upperMethod ast.Identifier) []ast.ObjectField {
+	mixinSelfFncId := ast.Identifier("__mixin" + strings.Title(string(name)))
+	mixinParentFncId := ast.Identifier("__mixin" + strings.Title(string(upperMethod)))
 
-	// local __mixinName(name) = __mixinParentName({ name+: name })
-	localMixinFnc := ast.Function{
-		Parameters: ast.Parameters{Required: []ast.Identifier{name}},
-		// __mixinParentName({ name+: name })
-		Body: &ast.Apply{
-			Target: &ast.Var{Id: mixinParentFncId},
-			// { name+: name }
-			Arguments: ast.Arguments{Positional: []ast.Node{
-				&ast.Object{
-					NodeBase: oneLiner,
-					Fields: []ast.ObjectField{
-						{Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldInherit, SuperSugar: true, Id: &name, Expr2: &ast.Var{Id: name}},
-					},
-				},
-			}},
+	// { name+: name }
+	var localFncBody ast.Node = &ast.Object{
+		NodeBase: oneLiner,
+		Fields: []ast.ObjectField{
+			{Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldInherit, SuperSugar: true, Id: &name, Expr2: &ast.Var{Id: name}},
 		},
 	}
+
+	// If upperMethod exists, we need to call it.
+	if upperMethod != emptyId {
+		// __mixinParentName({ name+: name })
+		localFncBody = &ast.Apply{
+			Target:    &ast.Var{Id: mixinParentFncId},
+			Arguments: ast.Arguments{Positional: []ast.Node{localFncBody}},
+		}
+	}
+
+	localMixinFnc := ast.Function{
+		Parameters: ast.Parameters{Required: []ast.Identifier{name}},
+		Body:       localFncBody,
+	}
+
+	return []ast.ObjectField{
+		{
+			Kind: ast.ObjectLocal, Hide: ast.ObjectFieldVisible, Id: &mixinSelfFncId,
+			MethodSugar: true, Method: &localMixinFnc, Params: &localMixinFnc.Parameters, Expr2: localMixinFnc.Body,
+		},
+	}
+}
+
+// buildSelfMixinFnc generates the jsonnet methods "mixinInstance",
+// common with all k8s.libsonnet objects.
+// JSONNET: mixinInstance(name) = __mixinName(name)
+func buildSelfMixinFnc(name ast.Identifier) []ast.ObjectField {
+	mixinInstanceFncId := ast.Identifier("mixinInstance")
+	mixinSelfFncId := ast.Identifier("__mixin" + strings.Title(string(name)))
+
 	// mixinInstance(name):: __mixinName(name)
-	selfMixin := ast.Function{
+	selfMixinFnc := ast.Function{
 		Parameters: ast.Parameters{Required: []ast.Identifier{name}},
 		// __mixinName(name)
 		Body: &ast.Apply{
@@ -217,12 +230,8 @@ func buildMixinFncs(name ast.Identifier, object Object) []ast.ObjectField {
 
 	return []ast.ObjectField{
 		{
-			Kind: ast.ObjectLocal, Hide: ast.ObjectFieldVisible, Id: &mixinSelfFncId,
-			MethodSugar: true, Method: &localMixinFnc, Params: &localMixinFnc.Parameters, Expr2: localMixinFnc.Body,
-		},
-		{
 			Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldHidden, Id: &mixinInstanceFncId,
-			MethodSugar: true, Method: &selfMixin, Params: &selfMixin.Parameters, Expr2: selfMixin.Body,
+			MethodSugar: true, Method: &selfMixinFnc, Params: &selfMixinFnc.Parameters, Expr2: selfMixinFnc.Body,
 		},
 	}
 }

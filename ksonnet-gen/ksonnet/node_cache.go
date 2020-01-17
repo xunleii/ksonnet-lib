@@ -34,7 +34,8 @@ func (cache istNodeCache) WhitelistAPI(apiWhitelist []string) (istNodeCache, err
 	return whitelistedCache, nil
 }
 
-// markAsWhitelisted tag an ist.APINode and all of their references with the XXX tag.
+// markAsWhitelisted tag an ist.APINode and all of their references with
+// the ReferencedTag tag.
 func (cache istNodeCache) markAsWhitelisted(node ist.Node) error {
 	switch n := node.(type) {
 	case *ist.Ref:
@@ -43,7 +44,7 @@ func (cache istNodeCache) markAsWhitelisted(node ist.Node) error {
 			return fmt.Errorf("invalid reference '%s' in %s: unknown API Node", n.ReferenceTo, n)
 		}
 
-		n.ReferenceTargetNode(cached)
+		//n.ResolveNode(cached)
 
 		if !cached.HasTag(ist.ReferencedTag) {
 			cached.AddTag(ist.ReferencedTag)
