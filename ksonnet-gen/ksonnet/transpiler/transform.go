@@ -224,13 +224,13 @@ func transformNode(node iast.Node, field string) ([]ast.ObjectField, error) {
 func transformObjectNode(obj *iast.Object, name string) ([]ast.ObjectField, error) {
 	var mixinFncs []ast.ObjectField
 
-	// The Parent is nil when the current node is a root object (APINode or
-	// first child of the mixin object).
-	if obj.Parent() == nil {
-		mixinFncs = newLocalMixinFnc(name, "")
-	} else {
-		mixinFncs = newLocalMixinFnc(name, obj.Parent().Name())
-	}
+	//// The Parent is nil when the current node is a root object (APINode or
+	//// first child of the mixin object).
+	//if obj.Parent() == nil {
+	//	mixinFncs = newLocalMixinFnc(name, "")
+	//} else {
+	//	mixinFncs = newLocalMixinFnc(name, obj.Parent().Name())
+	//}
 
 	mixinFncs = append(mixinFncs, newSelfMixinFnc(name)...)
 
@@ -259,9 +259,9 @@ func transformArrayNode(arr *iast.Array, name string) ([]ast.ObjectField, error)
 	var fields []ast.ObjectField
 
 	fields = append(fields, newAstComment(arr.Description())...)
-	fields = append(fields, newWithArrayFnc(name))
+	fields = append(fields, newWithArrayFnc(name, true))
 	fields = append(fields, newAstComment(arr.Description())...)
-	fields = append(fields, newWithMixinArrayFnc(name))
+	fields = append(fields, newWithMixinArrayFnc(name, true))
 
 	if ref, isRef := arr.ItemType.(*iast.Reference); isRef {
 		api := ref.LinkedTo()
@@ -277,7 +277,7 @@ func transformArrayNode(arr *iast.Array, name string) ([]ast.ObjectField, error)
 func transformScalarNode(scalar *iast.Scalar, name string) ([]ast.ObjectField, error) {
 	return append(
 		newAstComment(scalar.Description()),
-		newWithScalarFnc(name),
+		newWithScalarFnc(name, true),
 	), nil
 }
 
