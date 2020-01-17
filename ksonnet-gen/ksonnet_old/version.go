@@ -41,7 +41,7 @@ func (v *Version) APIObjects() []APIObject {
 	return objects
 }
 
-// Name is the name of the version.
+// SpecName is the name of the version.
 func (v *Version) Name() string {
 	return v.name
 }

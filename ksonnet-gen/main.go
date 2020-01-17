@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/ksonnet"
+	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/ksonnet_old"
 	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/kubespec"
 )
 
@@ -39,7 +39,7 @@ func main() {
 	// Emit Jsonnet code.
 	ksonnetLibSHA := getSHARevision(".")
 	k8sSHA := getSHARevision(s.FilePath)
-	kBytes, k8sBytes, err := ksonnet.Emit(&s, &ksonnetLibSHA, &k8sSHA)
+	kBytes, k8sBytes, err := ksonnet_old.Emit(&s, &ksonnetLibSHA, &k8sSHA)
 	if err != nil {
 		log.Fatalf("Could not write ksonnet library:\n%v", err)
 	}

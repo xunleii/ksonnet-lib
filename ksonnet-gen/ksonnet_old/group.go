@@ -20,7 +20,7 @@ func NewGroup(name string) *Group {
 	}
 }
 
-// Name is the name of the group.
+// SpecName is the name of the group.
 func (g *Group) Name() string {
 	return g.name
 }

@@ -170,7 +170,7 @@ func newPropertySet(strings ...string) propertySet {
 //   not meaninful for a given API object.
 // * We currently do not check that parameter names are unique.
 //   Duplicate identifiers in a parameter list results in a Jsonnet
-//   compiler error, though, so this should be caught by review and
+//   transpiler error, though, so this should be caught by review and
 //   CI, and it is hence not important for this case to be covered by
 //   this code.
 type CustomConstructorSpec struct {

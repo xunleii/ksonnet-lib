@@ -11,7 +11,11 @@ import (
 
 	"github.com/google/go-jsonnet/ast"
 	"github.com/google/go-jsonnet/parser"
+
 	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/astext"
+	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/ksonnet/ist"
+	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/ksonnet/transpiler"
+
 	"github.com/pkg/errors"
 )
 
@@ -406,7 +410,7 @@ func (p *printer) print(n interface{}) {
 			}
 
 			p.print(field)
-			if i < len(t.Fields)-1 {
+			if i < len(t.Fields)-1 && field.Kind != ist.ObjectComment {
 				p.writeByte(comma, 1)
 				if p.isObjectSingleLine(t) {
 					p.writeByte(space, 1)
@@ -565,7 +569,7 @@ func (p *printer) handleApply(a *ast.Apply) {
 		if a.TailStrict {
 			p.writeString(" tailstrict")
 		}
-	case *ast.Apply, *ast.Index, *ast.Self, *ast.Var, *ast.Parens:
+	case *ast.Apply, *ast.Index, *ast.Self, *ast.Var, *ast.Parens, *ast.SuperIndex:
 		p.print(a.Target)
 		p.writeString("(")
 		p.print(a.Arguments)
@@ -617,7 +621,7 @@ func (p *printer) handleConditional(c *ast.Conditional) {
 	}
 }
 
-func (p *printer) writeComment(c *astext.Comment) {
+func (p *printer) writeComment(c *astext.Comment, ignoreNewline bool) {
 	if c == nil {
 		return
 	}
@@ -629,7 +633,9 @@ func (p *printer) writeComment(c *astext.Comment) {
 			p.writeByte(space, 1)
 		}
 		p.writeString(strings.TrimSpace(line))
-		p.writeByte(newline, 1)
+		if !ignoreNewline {
+			p.writeByte(newline, 1)
+		}
 	}
 }
 
@@ -856,7 +862,7 @@ func (p *printer) handleObjectField(n interface{}) {
 		ofExpr1 = t.Expr1
 		ofExpr2 = t.Expr2
 		ofExpr3 = t.Expr3
-		p.writeComment(t.Comment)
+		p.writeComment(t.Comment, false)
 	case *ast.ObjectComp:
 		field := t.Fields[0]
 		ofHide = field.Hide
@@ -940,6 +946,8 @@ func (p *printer) handleObjectField(n interface{}) {
 			p.writeByte(newline, 1)
 			p.forSpec(forSpec)
 		}
+	case transpiler.ObjectComment:
+		p.writeComment(&astext.Comment{Text: ofExpr1.(*transpiler.AstComment).Content}, true)
 	}
 }
 

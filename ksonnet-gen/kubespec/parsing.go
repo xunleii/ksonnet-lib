@@ -39,7 +39,7 @@ func (dn *DefinitionName) Parse() (*ParsedDefinitionName, error) {
 	return &pd, nil
 }
 
-// Name parses a `DefinitionName` from an `ObjectRef`. `ObjectRef`s
+// SpecName parses a `DefinitionName` from an `ObjectRef`. `ObjectRef`s
 // that refer to a definition contain two parts: (1) a special prefix,
 // and (2) a `DefinitionName`, so this function simply strips the
 // prefix off.

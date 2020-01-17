@@ -45,7 +45,7 @@ func (f *LiteralField) FieldType() string {
 	return f.fieldType
 }
 
-// Name returns the name of the LiteralField.
+// SpecName returns the name of the LiteralField.
 func (f *LiteralField) Name() string {
 	return f.name
 }
@@ -78,7 +78,7 @@ func NewReferenceField(name, description, ref string) *ReferenceField {
 	}
 }
 
-// Name returns the name of the ReferenceField.
+// SpecName returns the name of the ReferenceField.
 func (f *ReferenceField) Name() string {
 	return f.name
 }
