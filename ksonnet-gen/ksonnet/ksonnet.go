@@ -706,14 +706,54 @@ var whitelist = []string{
 // Emit takes a swagger API specification, and returns the text of
 // `ksonnet-lib`, written in Jsonnet.
 func Emit(spec *spec.Swagger, ksonnetLibSHA, k8sSHA *string) (k *bytes.Buffer, k8s *bytes.Buffer, err error) {
-	// jsonnet, err := transpiler.Transpile(spec, transpiler.Config{PublicAPIs: whitelist})
 	jsonnet, err := transpiler.Transpile(
 		spec,
 		transpiler.Config{
-			PublicAPIs:    []string{"io.k8s.api.core.v1.Pod"},
-			IgnoredFields: []string{"kind", "apiVersion", "status"},
+			PublicAPIs:      []string{".+"},
+			BlacklistedAPIs: []string{"JSONSchema.*"},
+			IgnoredFields:   []string{"kind", "apiVersion", "error"},
+			APIsSpec: map[string]transpiler.APISpec{
+				"io.k8s.api.core.v1.PersistentVolumeSpec": {
+					RenameFields: map[string]string{
+						"local": "localStorage",
+					},
+				},
+				"io.k8s.api.core.v1.Container": {
+					Ctor: transpiler.Ctor{
+						Params: map[string]interface{}{
+							"name":  "",
+							"image": "",
+						},
+						Body: map[string]string{
+							"withImage": "image",
+							"withName":  "name",
+						},
+					},
+				},
+				"io.k8s.api.apps.v1.Deployment": {
+					Ctor: transpiler.Ctor{
+						Params: map[string]interface{}{
+							"name":       "",
+							"replicas":   1,
+							"containers": "",
+						},
+						Body: map[string]string{
+							"metadata.withName":                 "name",
+							"spec.withReplicas":                 "replicas",
+							"spec.template.spec.withContainers": "containers",
+						},
+					},
+				},
+			},
 		},
 	)
+	//jsonnet, err := transpiler.Transpile(
+	//	spec,
+	//	transpiler.Config{
+	//		PublicAPIs:    []string{"io.k8s.api.core.v1.Pod", "io.k8s.api.apps.v1.Deployment", "io.k8s.api.apps.v1.StatefulSet"},
+	//		IgnoredFields: []string{"kind", "apiVersion", "status"},
+	//	},
+	//)
 	//jsonnet, err := transpiler.Transpile(spec, transpiler.Config{PublicAPIs: []string{"io.k8s.api.apps.v1.Deployment", "io.k8s.api.apps.v1.StatefulSet"}})
 	//jsonnet, err := transpiler.Transpile(spec, transpiler.Config{PublicAPIs: []string{"io.k8s.api.core.v1.EmptyDirVolumeSource"}})
 
@@ -733,11 +773,11 @@ func Emit(spec *spec.Swagger, ksonnetLibSHA, k8sSHA *string) (k *bytes.Buffer, k
 	//
 	////podSpec := cache["io.k8s.api.core.v1.PodSpec"]
 	//
+	fmt.Fprintf(os.Stderr, "err: %+v\n", err)
+
 	var buf bytes.Buffer
 	_ = jsonnet
 	err = printer.Fprint(&buf, jsonnet)
-
-	fmt.Fprintf(os.Stderr, "err: %+v\n", err)
 	fmt.Println(buf.String())
 	return
 }

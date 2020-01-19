@@ -16,10 +16,11 @@ import (
 
 func genAst() {
 	//file, _ := ioutil.ReadFile("expected.libsonnet")
-	file, _ := ioutil.ReadFile("k8s.libsonnet")
+	//file, _ := ioutil.ReadFile("k8s.libsonnet")
 	//file, _ := ioutil.ReadFile("mixinInstance.jsonnet")
 
-	tokens, _ := parser.Lex("", string(file))
+	//tokens, _ := parser.Lex("", string(file))
+	tokens, _ := parser.Lex("", string(`{['local']: true}`))
 	node, _ := parser.Parse(tokens)
 
 	var buf bytes.Buffer

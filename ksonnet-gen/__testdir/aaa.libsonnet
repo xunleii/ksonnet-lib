@@ -51,5 +51,5 @@ local k8s = import "k8s.libsonnet";
       },
     },
   },
-  k8s:: k8s,
+  k8s:: k8s,  
 }

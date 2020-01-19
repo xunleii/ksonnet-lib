@@ -1,4 +1,4 @@
-local k8s = import "k8s.libsonnet";
+local k8s = import "k8s.libsonnet.1";
 
 {
     bench: [
@@ -7,6 +7,6 @@ local k8s = import "k8s.libsonnet";
             k8s.apps.v1.deployment.mixin.spec.template.spec.containersType.withName("bbb").withImage("bbb"),
             k8s.apps.v1.deployment.mixin.spec.template.spec.containersType.withName("ccc").withImage("ccc")
         ])
-        for i in std.range(0, 1000)
+        for i in std.range(0, 10000)
     ],
 }

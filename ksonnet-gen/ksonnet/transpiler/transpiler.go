@@ -12,48 +12,64 @@ import (
 	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/ksonnet/transpiler/iast"
 )
 
-type Config struct {
-	PublicAPIs       []string
-	IgnoredFields    []string
-	ignoredFieldsMap map[string]struct{}
+type Ctor struct {
+	Params map[string]interface{}
+	Body   map[string]string
 }
 
-// TODO(perf): generation tooks too much RAM to creates the Jsonnet AST
-// TODO(bug): API object function mustn't use self.mixinInstance (not exists). Example: gcePersistentDiskVolumeSource.withFsType
-// TODO(bug): local kind mustn't be used in hidden API object
-// TODO(bug): ref in API object are not in mixin object. Example: flexVolume.secretRef
-// TODO(bug): ref need refType field. Example: flexVolume.secretRef
-// TODO(bug): ignore mixinFnc if there is no mixin object
-// TODO(bug): mixin must contain only object
-// TODO(feature): Add field filtering
-// TODO(feature): Use references on non object API must be use as inner field
+type APISpec struct {
+	Ctor         Ctor
+	RenameFields map[string]string
+}
+
+type Config struct {
+	PublicAPIs []string
+	publicAPIs rxRegistry
+
+	APIsSpec map[string]APISpec
+
+	IgnoredFields    []string
+	ignoredFieldsMap rxRegistry
+
+	BlacklistedAPIs []string
+	blacklistedAPIs rxRegistry
+}
+
 // TODO(feature): Add API Node constructor (`new():: {},` by default)
 
 func Transpile(schema *spec.Swagger, config Config) (ast.Node, error) {
-	sort.Strings(config.PublicAPIs)
-	config.ignoredFieldsMap = stringSliceToMap(config.IgnoredFields)
+	var err error
 
+	// prepare transpiler configurations
+	config.publicAPIs, err = newRxRegistry(config.PublicAPIs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PublicAPIs values: %w", err)
+	}
+
+	config.ignoredFieldsMap, err = newRxRegistry(config.IgnoredFields)
+	if err != nil {
+		return nil, fmt.Errorf("invalid IgnoredFields values: %w", err)
+	}
+
+	config.blacklistedAPIs, err = newRxRegistry(config.BlacklistedAPIs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid BlacklistedAPIs values: %w", err)
+	}
+
+	// parse API specifications
 	apis, err := parseAPISpec(schema, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse API specs: %w", err)
 	}
 
-	// tag all public apis
-	for _, api := range config.PublicAPIs {
-		if node, exist := apis[api]; exist {
-			node.AddTag(iast.PublicNodeTag)
-		} else {
-			return nil, fmt.Errorf("failed to tag API '%s': unknown API object", api)
-		}
-	}
-
 	// resolve all public API references
 	for api, node := range apis {
 		// ignore hidden API
-		if !node.HasTag(iast.PublicNodeTag) {
+		if !config.publicAPIs.Contains(api) {
 			continue
 		}
 
+		node.AddTag(iast.PublicNodeTag)
 		node.AddTag(iast.ReferencedTag) // avoid referencing loop
 		if err := resolveReferences(apis, node.Node); err != nil {
 			return nil, fmt.Errorf("failed to resolve references of API '%s': %w", api, err)
@@ -62,8 +78,8 @@ func Transpile(schema *spec.Swagger, config Config) (ast.Node, error) {
 
 	// generate public and hidden api trees by filtering, sorting and grouping
 	// API Nodes by their definitions.
-	publicAPITree, hiddenAPITree := iast.APITree{}, iast.APITree{}
-	for _, api := range sortAPIMapKeys(apis) {
+	publicTree, hiddenTree := iast.APITree{}, iast.APITree{}
+	for _, api := range sortAPIMap(apis) {
 		node := apis[api]
 
 		// ignore unresolved API
@@ -71,33 +87,14 @@ func Transpile(schema *spec.Swagger, config Config) (ast.Node, error) {
 			continue
 		}
 
-		// add the API object in the right tree
-		group, version := node.Definition.Group, node.Definition.Version
-		tree := hiddenAPITree
+		hiddenTree.AddAPI(node)
 		if node.HasTag(iast.PublicNodeTag) {
-			tree = publicAPITree
+			publicTree.AddAPI(node)
 		}
-
-		if tree[group] == nil {
-			tree[group] = &iast.APIGroup{
-				Name:     group,
-				Versions: map[string]*iast.APIVersion{},
-			}
-		}
-
-		if tree[group].Versions[version] == nil {
-			tree[group].Versions[version] = &iast.APIVersion{
-				Parent: tree[group],
-				Name:   version,
-				APIs:   map[string]*iast.APINode{},
-			}
-		}
-
-		tree[group].Versions[version].APIs[api] = node
 	}
 
 	// transform the final trees to Jsonnet AST
-	jsonnetAst, err := transformAPIsTrees(publicAPITree, hiddenAPITree, config)
+	jsonnetAst, err := transformAPIsTrees(publicTree, hiddenTree, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform parsed API nodes to Jsonnet AST: %w", err)
 	}
@@ -135,15 +132,43 @@ func resolveReferences(apis map[string]*iast.APINode, node iast.Node) error {
 	return nil
 }
 
-// sortAPIMapKeys returns a list of sorted keys
-func sortAPIMapKeys(apis map[string]*iast.APINode) []string {
-	var keys = make([]string, 0, len(apis))
-	for api := range apis {
-		keys = append(keys, api)
+type apiNodeMapping []struct {
+	key  string
+	node *iast.APINode
+}
+
+func (a apiNodeMapping) Len() int      { return len(a) }
+func (a apiNodeMapping) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a apiNodeMapping) Less(i, j int) bool {
+	lnode, rnode := a[i].node.Definition, a[j].node.Definition
+	if lnode.Group == rnode.Group {
+		if lnode.Version == rnode.Version {
+			return lnode.Kind < rnode.Kind
+		}
+		return lnode.Version < rnode.Version
+	}
+	return lnode.Group < rnode.Group
+}
+func (a apiNodeMapping) ToAPIList() []string {
+	var keys = make([]string, 0, len(a))
+	for _, s := range a {
+		keys = append(keys, s.key)
+	}
+	return keys
+}
+
+// sortAPIMap returns a list of sorted API node
+func sortAPIMap(apis map[string]*iast.APINode) []string {
+	var nodes = make(apiNodeMapping, 0, len(apis))
+	for api, node := range apis {
+		nodes = append(nodes, struct {
+			key  string
+			node *iast.APINode
+		}{key: api, node: node})
 	}
 
-	sort.Strings(keys)
-	return keys
+	sort.Sort(nodes)
+	return nodes.ToAPIList()
 }
 
 // sortObjectFields returns a list of sorted fields
@@ -155,14 +180,6 @@ func sortObjectFields(apis map[string]iast.Node) []string {
 
 	sort.Strings(keys)
 	return keys
-}
-
-func stringSliceToMap(arr []string) map[string]struct{} {
-	smap := map[string]struct{}{}
-	for _, str := range arr {
-		smap[str] = struct{}{}
-	}
-	return smap
 }
 
 func formatKind(str string) string {

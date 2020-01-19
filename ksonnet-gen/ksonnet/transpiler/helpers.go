@@ -8,12 +8,9 @@ import (
 	"github.com/ksonnet/ksonnet-lib/ksonnet-gen/ksonnet/transpiler/iast"
 )
 
-var inlineObject = ast.NewNodeBaseLoc(ast.LocationRange{Begin: ast.Location{Line: 1}, End: ast.Location{Line: 1}})
-
-func newIdentifier(name string) *ast.Identifier {
-	id := ast.Identifier(name)
-	return &id
-}
+var (
+	inlineObject = ast.NewNodeBaseLoc(ast.LocationRange{Begin: ast.Location{Line: 1}, End: ast.Location{Line: 1}})
+)
 
 // AstComment is an extension of the jsonnet ast.Node, allowing us to
 // manage comments.
@@ -24,6 +21,7 @@ type AstComment struct {
 
 const ObjectComment ast.ObjectFieldKind = iota + 0x10
 
+// newAstComment creates a new comment based on the AstComment extension.
 func newAstComment(comment string) []ast.ObjectField {
 	var astComments []ast.ObjectField
 
@@ -36,39 +34,63 @@ func newAstComment(comment string) []ast.ObjectField {
 	return astComments
 }
 
+// newIdentifier returns a simple ast.Identifier pointer.
+func newIdentifier(name string) *ast.Identifier {
+	id := ast.Identifier(name)
+	return &id
+}
+
 // newReferencePtr generates a jsonnet object field linking to an hidden API object.
-// JSONNET: hidden.refGroup.refVersion.refKind(function(name) self.mixinInstance({ name+: name }))
-func newReferencePtr(name string, ref *iast.APINode) ast.Node {
+// JSONNET: definitions.refGroup.refVersion.refKind(function(name) name)
+// or, if useMixinInstance is true
+// JSONNET: definitions.refGroup.refVersion.refKind(function(name) self.mixinInstance({name+: name}))
+func newReferencePtr(name string, ref *iast.APINode, useMixinInstance bool) ast.Node {
 	group, version, kind := ref.Definition.Group, ref.Definition.Version, ref.Definition.Kind
 
-	// JSONNET: hidden.refGroup.refVersion.refKind
-	var index ast.Node = &ast.Var{Id: "hidden"}
-	if group != "core" {
-		index = &ast.Index{Target: index, Id: newIdentifier(group)}
+	// JSONNET: definitions.refGroup.refVersion.refKind
+	index := &ast.Index{
+		Target: &ast.Index{
+			Target: &ast.Index{
+				Target: &ast.Var{Id: "definition"},
+				Id:     newIdentifier(group),
+			},
+			Id: newIdentifier(version),
+		},
+		Id: newIdentifier(formatKind(kind)),
 	}
-	index = &ast.Index{Target: index, Id: newIdentifier(version)}
-	index = &ast.Index{Target: index, Id: newIdentifier(formatKind(kind))}
 
-	// JSONNET: function(name) self.mixinInstance({ name+: name })
-	paramFnc := &ast.Function{
-		Parameters: ast.Parameters{Required: []ast.Identifier{ast.Identifier(name)}},
-		Body: &ast.Apply{
-			Target: &ast.Index{Target: &ast.Self{}, Id: newIdentifier("mixinInstance")},
+	// JSONNET: name
+	var paramFncBody ast.Node = &ast.Var{Id: ast.Identifier(name)}
+
+	if useMixinInstance {
+		// JSONNET: mixinInstance({name+: name})
+		paramFncBody = &ast.Apply{
+			Target: &ast.Var{Id: "mixinInstance"},
 			Arguments: ast.Arguments{Positional: []ast.Node{
 				&ast.Object{
 					NodeBase: inlineObject,
 					Fields: []ast.ObjectField{
 						{
 							Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldInherit, SuperSugar: true,
-							Id: newIdentifier(name), Expr2: &ast.Var{Id: ast.Identifier(name)},
+							Id: newIdentifier(name), Expr2: paramFncBody,
 						},
 					},
 				},
 			}},
-		},
+		}
 	}
 
-	// JSONNET: hidden.refGroup.refVersion.refKind(function(name) self.mixinInstance({ name+: name }))
+	// JSONNET: function(name) name
+	// or, if useMixinInstance is true
+	// JSONNET: function(name) self.mixinInstance({name+: name})
+	paramFnc := &ast.Function{
+		Parameters: ast.Parameters{Required: []ast.Identifier{ast.Identifier(name)}},
+		Body:       paramFncBody,
+	}
+
+	// JSONNET: definitions.refGroup.refVersion.refKind(function(name) name)
+	// or, if useMixinInstance is true
+	// JSONNET: definitions.refGroup.refVersion.refKind(function(name) mixinInstance({name+: name}))
 	return &ast.Apply{
 		Target:    index,
 		Arguments: ast.Arguments{Positional: []ast.Node{paramFnc}},
@@ -77,17 +99,27 @@ func newReferencePtr(name string, ref *iast.APINode) ast.Node {
 
 // newReferenceType generates a jsonnet object field containing a link to
 // the referenced API object.
-// JSONNET: nameType:: hidden.refGroup.refVersion.refKind(function(name) self.mixinInstance({ name+: name }))
+// JSONNET: nameType:: definitions.refGroup.refVersion.refKind(function(name) name)
 func newReferenceType(name string, ref *iast.APINode) ast.ObjectField {
 	return ast.ObjectField{
 		Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldHidden,
-		Id: newIdentifier(name + "Type"), Expr2: newReferencePtr(name, ref),
+		Id: newIdentifier(name + "Type"), Expr2: newReferencePtr(name, ref, false),
+	}
+}
+
+// newReferenceMixin generates a jsonnet object field linking to a mixin field.
+// JSONNET: name:: self.mixin.name
+func newReferenceMixin(name string) ast.ObjectField {
+	return ast.ObjectField{
+		Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldHidden,
+		Id:    newIdentifier(name),
+		Expr2: &ast.Index{Target: &ast.Index{Target: &ast.Self{}, Id: newIdentifier("mixin")}, Id: newIdentifier(name)},
 	}
 }
 
 // newWithArrayGenericFnc helps to generate a jsonnet method more easily.
 func newWithGenericFnc(fnc, param string, op ast.Node) ast.ObjectField {
-	// JSONNET: (paramId):: self + op
+	// JSONNET: (param):: self + op
 	astFnc := ast.Function{
 		Parameters: ast.Parameters{Required: []ast.Identifier{ast.Identifier(param)}},
 		// JSONNET: self + op
@@ -98,7 +130,7 @@ func newWithGenericFnc(fnc, param string, op ast.Node) ast.ObjectField {
 		},
 	}
 
-	// JSONNET: fncId(paramId):: self + op
+	// JSONNET: fnc(param):: self + op
 	return ast.ObjectField{
 		Kind:        ast.ObjectFieldID,
 		Hide:        ast.ObjectFieldHidden,
@@ -112,9 +144,11 @@ func newWithGenericFnc(fnc, param string, op ast.Node) ast.ObjectField {
 
 // newWithScalarFnc generates the jsonnet method that add a scalar value to
 // an object field.
-// JSONNET: withName(name):: self + self.mixinInstance({ name: name }
+// JSONNET: withName(name):: self + {name: name}
+// or, if useMixinInstance == true
+// JSONNET: withName(name):: self + mixinInstance({name: name})
 func newWithScalarFnc(name string, useMixinInstance bool) ast.ObjectField {
-	// JSONNET: { name: name }
+	// JSONNET: {name: name}
 	var op ast.Node = &ast.Object{
 		NodeBase: inlineObject,
 		Fields: []ast.ObjectField{
@@ -128,12 +162,9 @@ func newWithScalarFnc(name string, useMixinInstance bool) ast.ObjectField {
 	}
 
 	if useMixinInstance {
-		// JSONNET: self.mixinInstance({ name: name })
+		// JSONNET: self.mixinInstance({name: name})
 		op = &ast.Apply{
-			Target: &ast.Index{
-				Target: &ast.Self{},
-				Id:     newIdentifier("mixinInstance"),
-			},
+			Target: &ast.Var{Id: "mixinInstance"},
 			Arguments: ast.Arguments{
 				Positional: []ast.Node{op},
 			},
@@ -166,8 +197,9 @@ func newWithArrayGenericFnc(fnc, param string, branchTrue, branchFalse ast.Node)
 
 // newWithArrayFnc generates the jsonnet method that add an array to an
 // object field.
-// JSONNET: withName(name):: self + if std.type(name) == 'array' then
-// self.mixinInstance({ name: name }) else self.mixinInstance({ name: [name] })
+// JSONNET: withName(name):: self + if std.type(name) == 'array' then {name: name} else {name: [name]}
+// or, if useMixinInstance is true
+// JSONNET: withName(name):: self + if std.type(name) == 'array' then mixinInstance({name: name}) else mixinInstance({name: [name]})
 func newWithArrayFnc(name string, useMixinInstance bool) ast.ObjectField {
 	// JSONNET: { name: name }
 	var simpleObj ast.Node = &ast.Object{
@@ -180,7 +212,7 @@ func newWithArrayFnc(name string, useMixinInstance bool) ast.ObjectField {
 		},
 	}
 
-	// JSONNET: { name: [name] }
+	// JSONNET: {name: [name]}
 	var arrObj ast.Node = &ast.Object{
 		NodeBase: inlineObject,
 		Fields: []ast.ObjectField{
@@ -192,13 +224,14 @@ func newWithArrayFnc(name string, useMixinInstance bool) ast.ObjectField {
 	}
 
 	if useMixinInstance {
+		// JSONNET: mixinInstance({name: name})
 		simpleObj = &ast.Apply{
-			Target:    &ast.Index{Target: &ast.Self{}, Id: newIdentifier("mixinInstance")},
+			Target:    &ast.Var{Id: "mixinInstance"},
 			Arguments: ast.Arguments{Positional: []ast.Node{simpleObj}},
 		}
 		arrObj = &ast.Apply{
-			Target:    &ast.Index{Target: &ast.Self{}, Id: newIdentifier("mixinInstance")},
-			Arguments: ast.Arguments{Positional: []ast.Node{simpleObj}},
+			Target:    &ast.Var{Id: "mixinInstance"},
+			Arguments: ast.Arguments{Positional: []ast.Node{arrObj}},
 		}
 	}
 
@@ -207,8 +240,9 @@ func newWithArrayFnc(name string, useMixinInstance bool) ast.ObjectField {
 
 // newWithMixinArrayFnc generates the jsonnet method that merge an array with an
 // object field.
-// JSONNET: withNameMixin(name):: self + if std.type(name) == 'array' then
-// self.mixinInstance({ name+: name }) else self.mixinInstance({ name+: [name] }
+// JSONNET: withNameMixin(name):: self + if std.type(name) == 'array' then { name+: name } else { name+: [name] }
+// or, if useMixinInstance is true
+// JSONNET: withNameMixin(name):: self + if std.type(name) == 'array' then mixinInstance({ name+: name }) else mixinInstance({ name+: [name] })
 func newWithMixinArrayFnc(name string, useMixinInstance bool) ast.ObjectField {
 	// JSONNET: { name+: name }
 	var simpleObj ast.Node = &ast.Object{
@@ -234,11 +268,11 @@ func newWithMixinArrayFnc(name string, useMixinInstance bool) ast.ObjectField {
 
 	if useMixinInstance {
 		simpleObj = &ast.Apply{
-			Target:    &ast.Index{Target: &ast.Self{}, Id: newIdentifier("mixinInstance")},
+			Target:    &ast.Var{Id: "mixinInstance"},
 			Arguments: ast.Arguments{Positional: []ast.Node{simpleObj}},
 		}
 		arrObj = &ast.Apply{
-			Target:    &ast.Index{Target: &ast.Self{}, Id: newIdentifier("mixinInstance")},
+			Target:    &ast.Var{Id: "mixinInstance"},
 			Arguments: ast.Arguments{Positional: []ast.Node{simpleObj}},
 		}
 	}
@@ -248,22 +282,20 @@ func newWithMixinArrayFnc(name string, useMixinInstance bool) ast.ObjectField {
 
 // newSelfMixinFnc generates the jsonnet methods "mixinInstance",
 // common with all k8s.libsonnet objects.
-// JSONNET: mixinInstance(name):: mixinInstance(name)
-func newSelfMixinFnc(name string) []ast.ObjectField {
+// JSONNET: mixinInstance(__self):: mixinInstance(__self)
+func newSelfMixinFnc() ast.ObjectField {
 	// JSONNET: mixinInstance(name):: mixinInstance(name)
 	selfMixinFnc := ast.Function{
-		Parameters: ast.Parameters{Required: []ast.Identifier{ast.Identifier(name)}},
+		Parameters: ast.Parameters{Required: []ast.Identifier{ast.Identifier("_self_")}},
 		// JSONNET: mixinInstance(name)
 		Body: &ast.Apply{
 			Target:    &ast.Var{Id: ast.Identifier("mixinInstance")},
-			Arguments: ast.Arguments{Positional: []ast.Node{&ast.Var{Id: ast.Identifier(name)}}},
+			Arguments: ast.Arguments{Positional: []ast.Node{&ast.Var{Id: ast.Identifier("_self_")}}},
 		},
 	}
 
-	return []ast.ObjectField{
-		{
-			Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldHidden, Id: newIdentifier("mixinInstance"),
-			MethodSugar: true, Method: &selfMixinFnc, Params: &selfMixinFnc.Parameters, Expr2: selfMixinFnc.Body,
-		},
+	return ast.ObjectField{
+		Kind: ast.ObjectFieldID, Hide: ast.ObjectFieldHidden, Id: newIdentifier("mixinInstance"),
+		MethodSugar: true, Method: &selfMixinFnc, Params: &selfMixinFnc.Parameters, Expr2: selfMixinFnc.Body,
 	}
 }

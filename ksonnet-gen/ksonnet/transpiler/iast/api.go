@@ -4,27 +4,29 @@ import "fmt"
 
 type (
 	// APITree is a specific node representing a collection of API Groups.
-	APITree map[string]*APIGroup
+	APITree struct {
+		Groups   []*APIGroup
+		groupIdx map[string]int
+	}
 
 	// APIVersion is a specific node representing a collection of API Versions
 	// grouped by the same Group.
 	APIGroup struct {
-		Name     string
-		Versions map[string]*APIVersion
+		Name       string
+		Versions   []*APIVersion
+		versionIdx map[string]int
 	}
 
 	// APIVersion is a specific node representing a collection of API APIs
 	// grouped by the same Group and Version.
 	APIVersion struct {
-		Parent *APIGroup
-		Name   string
-		APIs   map[string]*APINode
+		Name string
+		APIs []*APINode
 	}
 
 	// APINode is a wrapper extending the Node type in order to add some
 	// information about the API Object, like its kind or group.
 	APINode struct {
-		Parent      *APIVersion
 		Definition  APIDefinition
 		Description string
 		Node        Node
@@ -34,11 +36,43 @@ type (
 	// APIDefinition contains elements common with all API Object
 	// (like Deployment, Statefulset, Node, etc...).
 	APIDefinition struct {
-		Group   string
-		Version string
-		Kind    string
+		Fullname string
+		Group    string
+		Version  string
+		Kind     string
 	}
 )
+
+func (tree *APITree) AddAPI(node *APINode) {
+	group, version := node.Definition.Group, node.Definition.Version
+	if tree.groupIdx == nil {
+		tree.groupIdx = map[string]int{}
+	}
+
+	if _, exists := tree.groupIdx[group]; !exists {
+		tree.groupIdx[group] = len(tree.Groups)
+		tree.Groups = append(
+			tree.Groups,
+			&APIGroup{
+				Name:       group,
+				versionIdx: map[string]int{},
+			},
+		)
+	}
+	groupTree := tree.Groups[tree.groupIdx[group]]
+
+	if _, exists := groupTree.versionIdx[version]; !exists {
+		groupTree.versionIdx[version] = len(groupTree.Versions)
+		groupTree.Versions = append(
+			groupTree.Versions,
+			&APIVersion{
+				Name: version,
+			},
+		)
+	}
+	versionTree := groupTree.Versions[groupTree.versionIdx[version]]
+	versionTree.APIs = append(versionTree.APIs, node)
+}
 
 // APIDefinitionFromAPIName creates an APIDefinition based on the API fullname.
 func APIDefinitionFromAPIName(fullname string) (APIDefinition, error) {
@@ -49,15 +83,17 @@ func APIDefinitionFromAPIName(fullname string) (APIDefinition, error) {
 
 	if submatch[rxIdGroup] != "" {
 		return APIDefinition{
-			Group:   submatch[rxIdGroup],
-			Version: submatch[rxIdVersion],
-			Kind:    submatch[rxIdKind],
+			Fullname: fullname,
+			Group:    submatch[rxIdGroup],
+			Version:  submatch[rxIdVersion],
+			Kind:     submatch[rxIdKind],
 		}, nil
 	} else {
 		return APIDefinition{
-			Group:   "core",
-			Version: submatch[rxIdGroupSpe],
-			Kind:    submatch[rxIdKindSpe],
+			Fullname: fullname,
+			Group:    "core",
+			Version:  submatch[rxIdGroupSpe],
+			Kind:     submatch[rxIdKindSpe],
 		}, nil
 	}
 }
